@@ -2,6 +2,8 @@
 import argparse
 import json
 import secrets
+import socket
+import os
 import threading
 import webbrowser
 import urllib.request
@@ -62,6 +64,15 @@ def run_turn(text):
         with LOCK:
             BUSY = False
             emit("done")
+
+class LocalServer(ThreadingHTTPServer):
+    # Windows SO_REUSEADDR permits competing listeners on the same address.
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -184,7 +195,7 @@ def main():
     args = parser.parse_args()
     load_settings()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = LocalServer(("127.0.0.1", args.port), Handler)
     except OSError:
         url = f"http://127.0.0.1:{args.port}/"
         try:

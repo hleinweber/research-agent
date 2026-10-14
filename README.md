@@ -98,5 +98,5 @@ The student explained the agent loop correctly and selected a local web page.
 The student approved the web interface.
 Fixed a stopped-server issue during review: the server was restarted independently, and the page now displays connection failures and disables Send while offline. Live browser Send and disconnect/reconnect checks passed.
 Live checks also passed for sequential read-only tool calls on a small temporary folder fixture and model recovery after a missing program. Input tokens increased across tool rounds.
-The startup flow now reuses an existing server, and the page uses a stable URL with a private session cookie.
+The startup flow now reuses an existing server, and the page uses a stable URL with a private session cookie. Windows binds the port exclusively to prevent competing server copies. Live browser Send, reload, duplicate launch, and launch from the homework directory passed.
 Next: review public files and the prepared install skill, get publishing approval, publish the harness, verify a fresh public clone, and submit the class pull request.
