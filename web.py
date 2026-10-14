@@ -4,6 +4,8 @@ import json
 import secrets
 import threading
 import webbrowser
+import urllib.request
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -72,6 +74,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'")
+        if content_type == "text/html":
+            self.send_header("Set-Cookie", f"research-agent-{self.server.server_port}={TOKEN}; HttpOnly; SameSite=Strict; Path=/")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -89,8 +93,16 @@ class Handler(BaseHTTPRequestHandler):
     def authenticated(self):
         if not self.allowed():
             return False
-        if not secrets.compare_digest(self.headers.get("X-Session-Token", ""), TOKEN):
-            self.respond(403, {"error": "Open the full startup link, including its fragment."})
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+        except Exception:
+            pass
+        session = cookie.get(f"research-agent-{self.server.server_port}")
+        cookie_token = session.value if session else ""
+        if not (secrets.compare_digest(cookie_token, TOKEN) or
+                secrets.compare_digest(self.headers.get("X-Session-Token", ""), TOKEN)):
+            self.respond(403, {"error": "Reload this page to reconnect to the server."})
             return False
         return True
 
@@ -103,6 +115,8 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in assets:
             filename, content_type = assets[parsed.path]
             self.respond(200, (ROOT / filename).read_bytes(), content_type)
+        elif parsed.path == "/health":
+            self.respond(200, {"application": "research-agent"})
         elif parsed.path == "/events":
             if not self.authenticated():
                 return
@@ -169,8 +183,22 @@ def main():
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
     load_settings()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    url = f"http://127.0.0.1:{server.server_port}/#{TOKEN}"
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError:
+        url = f"http://127.0.0.1:{args.port}/"
+        try:
+            with urllib.request.urlopen(url + "health", timeout=2) as response:
+                existing = json.load(response).get("application") == "research-agent"
+        except Exception:
+            existing = False
+        if existing:
+            print("Research agent is already running. Open: " + url, flush=True)
+            if not args.no_browser:
+                webbrowser.open(url)
+            return
+        parser.exit(1, f"Cannot start on port {args.port}. Try --port 8766.\n")
+    url = f"http://127.0.0.1:{server.server_port}/"
     print("Open this local chat link: " + url, flush=True)
     print("Working folder: " + str(Path.cwd()), flush=True)
     print("Press Ctrl+C to stop.", flush=True)

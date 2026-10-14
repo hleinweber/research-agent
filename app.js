@@ -1,4 +1,3 @@
-const token = location.hash.slice(1);
 let cursor = 0, busy = false, connected = false, sending = false;
 const messages = document.querySelector('#messages');
 const input = document.querySelector('#input');
@@ -16,14 +15,14 @@ async function api(path, data) {
   try {
     const response = await fetch(path, {method: data === undefined ? 'GET' : 'POST',
       signal: controller.signal,
-      headers: {'X-Session-Token': token, 'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json'},
       body: data === undefined ? undefined : JSON.stringify(data)});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Request failed');
     return result;
   } catch (error) {
     if (error.name === 'TypeError' || error.name === 'AbortError')
-      throw new Error('Cannot reach the local server. Run uv run python web.py in the research-agent folder, then open its new browser link.');
+      throw new Error('Cannot reach the local server. Run uv run python web.py in the research-agent folder, then reload this page.');
     throw error;
   } finally { clearTimeout(timer); }
 }

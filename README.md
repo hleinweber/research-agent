@@ -51,9 +51,11 @@ uv run python web.py
 Start the server in a separate terminal window so your original shell remains available. Keep the server running while using the page. Closing its terminal stops the server; the page then shows restart instructions and disables Send.
 
 The browser opens automatically. Alternatively use `uv run python web.py --no-browser`
-and open the full printed link, including the fragment after `#`.
-The server listens only on `127.0.0.1`, with a browser session token separate from your API key.
-Use `--port 8766` if the default port, 8765, is occupied. Press Ctrl+C in the server terminal to stop.
+and open the printed link.
+The server listens only on `127.0.0.1`, with a private browser session cookie separate from your API key. Reloading reconnects after a restart.
+If research-agent is already running, launching it again reopens the existing page and returns your shell.
+Use `--port 8766` if the default port, 8765, is occupied by another program.
+On Windows you can launch from any folder with `& "$env:USERPROFILE\research-agent\start.ps1"`. Press Ctrl+C in the server terminal to stop.
 
 Ask "What files are in this folder?" Review the command and choose Approve or Deny.
 Every command needs approval; unanswered approval requests expire after ten minutes without running.
@@ -96,4 +98,5 @@ The student explained the agent loop correctly and selected a local web page.
 The student approved the web interface.
 Fixed a stopped-server issue during review: the server was restarted independently, and the page now displays connection failures and disables Send while offline. Live browser Send and disconnect/reconnect checks passed.
 Live checks also passed for sequential read-only tool calls on a small temporary folder fixture and model recovery after a missing program. Input tokens increased across tool rounds.
+The startup flow now reuses an existing server, and the page uses a stable URL with a private session cookie.
 Next: review public files and the prepared install skill, get publishing approval, publish the harness, verify a fresh public clone, and submit the class pull request.
