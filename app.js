@@ -9,6 +9,8 @@ function updateButtons() {
   document.querySelector('#reset').disabled = !connected || busy || sending;
 }
 const cards = new Map();
+let callNumber = 0;
+const latestTokens = document.querySelector('#latest-tokens');
 async function api(path, data) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -34,13 +36,17 @@ function card(label, text, kind) {
   item.append(heading, body); messages.append(item); return item;
 }
 function render(event) {
-  if (event.kind === 'reset') {messages.replaceChildren(); cards.clear(); return;}
+  if (event.kind === 'reset') {
+    messages.replaceChildren(); cards.clear(); callNumber = 0;
+    latestTokens.textContent = 'No completed calls yet.'; return;
+  }
   if (event.kind === 'user' || event.kind === 'assistant' || event.kind === 'error')
     card({user:'You', assistant:'Assistant', error:'Request error'}[event.kind], event.text, event.kind);
   if (event.kind === 'usage') {
-    const row = document.createElement('p'); row.className = 'usage';
-    row.textContent = `API call | Input: ${event.input ?? 'not reported'} | Cached input: ${event.cached ?? 'not reported'} | Output: ${event.output ?? 'not reported'}`;
-    messages.append(row);
+    callNumber += 1;
+    const counts = `Input: ${event.input ?? 'not reported'} | Cached input: ${event.cached ?? 'not reported'} | Output: ${event.output ?? 'not reported'}`;
+    card(`API call #${callNumber} - Token usage`, counts, 'usage');
+    latestTokens.textContent = `Call #${callNumber} | ${counts}`;
   }
   if (event.kind === 'command') {
     const item = card('Command awaiting your approval', event.text, 'command');

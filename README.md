@@ -64,7 +64,7 @@ On Windows the `bash` tool uses PowerShell; on macOS and Linux it uses bash.
 Commands have a 60-second timeout, and only the last 10,000 output characters are returned.
 Standard output and standard error are combined. Each result includes an exit code.
 
-Input, cached input when reported, and output tokens appear for each API call.
+Input, cached input when reported, and output tokens appear in a numbered card for each API call. A latest-call summary stays visible above the message box.
 Cached input is part of the input count. There is a limit of 20 tool rounds per question.
 This is a single-user, single-conversation server: multiple tabs share the same conversation.
 New conversation clears the model history. Conversations are kept in memory, not saved to disk.
