@@ -48,7 +48,7 @@ API calls can incur charges from your provider.
 uv run python web.py
 ```
 
-Keep the server running while using the page. Closing its terminal stops the server; the page then shows restart instructions and disables Send.
+Start the server in a separate terminal window so your original shell remains available. Keep the server running while using the page. Closing its terminal stops the server; the page then shows restart instructions and disables Send.
 
 The browser opens automatically. Alternatively use `uv run python web.py --no-browser`
 and open the full printed link, including the fragment after `#`.
@@ -93,7 +93,7 @@ Browser checks exercise the chat and approval interface with a predictable simul
 ## Status
 
 The student explained the agent loop correctly and selected a local web page.
-The web interface is implemented; awaiting the student's interface review.
+The student approved the web interface.
 Fixed a stopped-server issue during review: the server was restarted independently, and the page now displays connection failures and disables Send while offline. Live browser Send and disconnect/reconnect checks passed.
-Next: finish live interactive examples, review public files, get publishing approval,
-publish the harness, test its install skill from a fresh clone, and submit the class pull request.
+Live checks also passed for sequential read-only tool calls on a small temporary folder fixture and model recovery after a missing program. Input tokens increased across tool rounds.
+Next: review public files and the prepared install skill, get publishing approval, publish the harness, verify a fresh public clone, and submit the class pull request.
