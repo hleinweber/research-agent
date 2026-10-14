@@ -2,8 +2,9 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Research agent</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body><main><header><div><p class="eyebrow">AI IN RESEARCH</p><h1>Research agent</h1>
-<p>Ask a question. Review each command before it runs.</p></div><button id="reset" class="secondary">New conversation</button></header>
+<p>Ask a question. Review each command before it runs.</p></div><button id="reset" class="secondary" disabled>New conversation</button></header>
 <div class="context"><span id="status" role="status">Connecting...</span><span id="folder"></span></div>
+<p id="notice" role="alert" hidden></p>
 <section id="messages" aria-label="Conversation" aria-live="polite"><p id="welcome">Try &ldquo;What files are in this folder?&rdquo;</p></section>
-<form id="chat"><label for="input">Your message</label><div class="compose"><textarea id="input" rows="2" placeholder="Ask your research assistant..." required></textarea><button id="send" type="submit">Send</button></div>
+<form id="chat"><label for="input">Your message</label><div class="compose"><textarea id="input" rows="2" placeholder="Ask your research assistant..." required></textarea><button id="send" type="submit" disabled>Send</button></div>
 <small>Enter to send | Shift+Enter for a new line | Commands require approval</small></form></main></body></html>

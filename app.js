@@ -1,16 +1,31 @@
 const token = location.hash.slice(1);
-let cursor = 0, busy = false;
+let cursor = 0, busy = false, connected = false, sending = false;
 const messages = document.querySelector('#messages');
 const input = document.querySelector('#input');
 const status = document.querySelector('#status');
+const notice = document.querySelector('#notice');
+function showError(message) { notice.textContent = message; notice.hidden = false; }
+function updateButtons() {
+  document.querySelector('#send').disabled = !connected || busy || sending;
+  document.querySelector('#reset').disabled = !connected || busy || sending;
+}
 const cards = new Map();
 async function api(path, data) {
-  const response = await fetch(path, {method: data === undefined ? 'GET' : 'POST',
-    headers: {'X-Session-Token': token, 'Content-Type': 'application/json'},
-    body: data === undefined ? undefined : JSON.stringify(data)});
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Request failed');
-  return result;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(path, {method: data === undefined ? 'GET' : 'POST',
+      signal: controller.signal,
+      headers: {'X-Session-Token': token, 'Content-Type': 'application/json'},
+      body: data === undefined ? undefined : JSON.stringify(data)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Request failed');
+    return result;
+  } catch (error) {
+    if (error.name === 'TypeError' || error.name === 'AbortError')
+      throw new Error('Cannot reach the local server. Run uv run python web.py in the research-agent folder, then open its new browser link.');
+    throw error;
+  } finally { clearTimeout(timer); }
 }
 function card(label, text, kind) {
   document.querySelector('#welcome')?.remove();
@@ -61,18 +76,23 @@ async function poll() {
   try {
     const result = await api(`/events?after=${cursor}`);
     result.events.forEach(render); cursor = result.cursor; busy = result.busy;
+    connected = true; notice.hidden = true;
     status.textContent = busy ? 'Agent working | review any pending command below' : 'Ready';
     document.querySelector('#folder').textContent = `Working folder: ${result.folder}`;
-    document.querySelector('#send').disabled = busy;
-    document.querySelector('#reset').disabled = busy;
-  } catch (error) {status.textContent = error.message;}
+    updateButtons();
+  } catch (error) {
+    connected = false; status.textContent = 'Disconnected';
+    showError(error.message); updateButtons();
+  }
   setTimeout(poll, 500);
 }
 document.querySelector('#chat').onsubmit = async event => {
-  event.preventDefault(); const text = input.value.trim(); if (!text || busy) return;
-  busy = true; document.querySelector('#send').disabled = true;
-  try {await api('/chat', {text}); input.value = ''; input.focus();}
-  catch (error) {status.textContent = error.message; busy = false; document.querySelector('#send').disabled = false;}
+  event.preventDefault(); const text = input.value.trim();
+  if (!text || busy || sending || !connected) return;
+  sending = true; updateButtons(); status.textContent = 'Sending...';
+  try {await api('/chat', {text}); busy = true; input.value = ''; input.focus();}
+  catch (error) {render({kind:'error', text:error.message}); status.textContent = 'Message was not sent';}
+  finally {sending = false; updateButtons();}
 };
 input.onkeydown = event => {if (event.key === 'Enter' && !event.shiftKey) {event.preventDefault(); document.querySelector('#chat').requestSubmit();}};
 document.querySelector('#reset').onclick = async () => {try {await api('/reset', {});} catch(error) {status.textContent = error.message;}};
