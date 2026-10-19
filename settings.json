@@ -1,0 +1,8 @@
+{
+  "allow": [
+    "telegram__send_message",
+    "insight_literature__search_papers",
+    "insight_literature__get_paper",
+    "insight_literature__insight_reference_sources"
+  ]
+}

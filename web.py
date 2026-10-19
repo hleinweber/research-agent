@@ -23,12 +23,13 @@ EVENTS = []
 MESSAGES = initial_messages()
 BUSY = False
 PENDING = None
+PLUGINS = None
 
 def emit(kind, **data):
     with LOCK:
         EVENTS.append({"kind": kind, **data})
 
-def web_tool(command):
+def web_tool(command, execute=None):
     global PENDING
     approval = {"id": secrets.token_hex(8), "command": command,
                 "ready": threading.Event(), "approved": False}
@@ -41,7 +42,7 @@ def web_tool(command):
         PENDING = None
     if answered and approval["approved"]:
         try:
-            result = run_command(command)
+            result = execute() if execute else run_command(command)
         except OSError as error:
             result = {"output": f"Cannot start command: {error}", "exit_code": None}
     else:
@@ -56,7 +57,8 @@ def run_turn(text):
         MESSAGES.append({"role": "user", "content": text})
         agent_turn(MESSAGES, run_tool=web_tool,
                    on_text=lambda reply: emit("assistant", text=reply),
-                   on_usage=lambda counts: emit("usage", **counts))
+                   on_usage=lambda counts: emit("usage", **counts), plugins=PLUGINS,
+                   approve_mcp=lambda name, arguments: web_tool(name + "\n" + json.dumps(arguments), execute=lambda:{"approved":True,"output":"Approved MCP call.","exit_code":0}).get("approved",False))
     except Exception as error:
         # Avoid dumping request bodies, headers, or credentials into the browser.
         emit("error", text=f"Request failed ({type(error).__name__}). Check your connection, model access, and billing; retry or reset the conversation.")
@@ -183,12 +185,13 @@ class Handler(BaseHTTPRequestHandler):
                     self.respond(409, {"error": "Finish or deny the current command first."})
                 else:
                     MESSAGES[:] = initial_messages()
+                    if PLUGINS: MESSAGES[0]["content"] += PLUGINS.skill_prompt()
                     emit("reset")
                     self.respond(200, {"ok": True})
             else:
                 self.respond(404, {"error": "Not found."})
 
-def main():
+def serve():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--no-browser", action="store_true")
@@ -221,6 +224,18 @@ def main():
         pass
     finally:
         server.server_close()
+
+def main():
+    global PLUGINS
+    from plugins import Plugins
+    with Plugins() as plugins:
+        PLUGINS = plugins
+        plugins.announce()
+        MESSAGES[0]["content"] += plugins.skill_prompt()
+        try:
+            serve()
+        finally:
+            PLUGINS = None
 
 if __name__ == "__main__":
     main()

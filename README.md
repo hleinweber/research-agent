@@ -1,9 +1,9 @@
 # Research agent
 
 A small agent harness built by hleinweber for UCLA AI in Research, Week 2.
-It talks to an OpenAI-compatible Chat Completions API, with exactly one tool named `bash`.
+It talks to an OpenAI-compatible Chat Completions API, with a built-in tool named `bash` and tools discovered from MCP plugins.
 The local web page shows the conversation, command approval buttons, command output and exit codes, and token usage for each API call.
-No agent frameworks or external Python packages are needed.
+The loop is written directly; the official MCP SDK supplies plugin transport.
 
 ## Install
 
@@ -75,7 +75,7 @@ A terminal interface is also available with `uv run python agent.py`; type `/qui
 ## Understand the loop
 
 1. `api.py` loads configuration and sends a Chat Completions request.
-2. `agent.py` sends the full conversation and the one tool definition.
+2. `agent.py` sends the full conversation and the built-in and discovered tool definitions.
 3. When a model reply contains tool calls, each command waits for approval.
 4. `shell_tool.py` runs an approved command and returns output plus its exit code.
 5. The loop appends each result with its matching tool-call ID and calls the model again.
@@ -96,4 +96,25 @@ Browser checks exercise the chat and approval interface with a predictable simul
 
 Week 2 submitted: [pull request #11](https://github.com/huangzesen/ai-in-research-homework/pull/11).
 
-The harness is public under MIT. A fresh public clone passed Windows browser checks for command approval, denial, output, model replies, token usage, and reset. Awaiting instructor review.
+Week 3: both plugins and the harness loader/Telegram mode are implemented. Student-confirmed checks passed for web-to-phone sending, command approval and denial, two separately approved commands, conversation context explanation, old-message skipping after restart, and research replies with observed search/DOI tool calls. Unauthorized-chat filtering passed a simulated local check; no live second-account test has been done. Research covers seismology and magnetometer calibration. Citation metadata is verified through tools, but summaries still require scientific review.
+
+Submission files are prepared in the isolated `C:/Users/hleinweber/ai-in-research-week3` worktree, branch `week-3-hleinweber`. Codex host validation passed: Telegram sending returned status sent (message ID 59), incoming polling responded successfully, and literature search, source listing and DOI lookup returned successfully. A fresh-message receive test in Codex was inconclusive after the Telegram tool became unavailable; earlier phone-mode tests remain documented above. Final SDK checks passed for all literature tools and invalid inputs; harness integration passed for discovery, denial, polling ownership and a model call (872 input tokens). The submission is prepared for publication; pushing and opening the homework PR await the student's final approval.
+
+## Week 3 plugins and Telegram
+
+Run `uv --system-certs run python agent.py` for terminal chat or `uv --system-certs run python web.py` for web chat. uv installs the official MCP SDK dependency. The loader starts each plugins/*/.mcp.json stdio server, adds its tools beside bash and adds skill names, descriptions and paths to the system prompt. Full skills are read through an approved bash call only when needed. Startup lists plugins, tools and skills; each API call reports token usage including the first input count.
+
+The Telegram plugin requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in local .env. InSight literature needs no key. settings.json allow-lists Telegram send and the three read-only literature tools. Bash always requires approval; other MCP tools ask unless explicitly allowed.
+
+Start phone mode in a separate terminal:
+
+```powershell
+cd C:\Users\hleinweber\research-agent
+uv --system-certs run python agent.py --telegram
+```
+
+Keep the process running. Only one process may poll the bot at once; stop web/terminal/plugin tests before starting phone mode. For commands, use Telegram Reply on the approval message and send yes or no. Only yes on the matching prompt approves; anything else declines, and unanswered prompts expire after ten minutes. Replies to old prompts are ignored. /new clears history. The harness owns incoming messages; the model cannot call wait_for_messages in this mode.
+
+Only your private chat ID is accepted. Startup skips old messages. Keep .env out of Git and chat; revoke leaked bot tokens with BotFather /revoke. Bot chats are not end-to-end encrypted. Review each command; do not send secrets.
+
+Tool calls print names and return status in the terminal without arguments or result bodies. Literature instructions require search, DOI verification, exact metadata and checking the observation method. This is model guidance, not programmatic citation enforcement. Scientific summaries need review, especially shared editorial abstracts that describe several companion papers.
