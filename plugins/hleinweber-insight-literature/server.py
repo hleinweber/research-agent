@@ -46,17 +46,44 @@ def summarize(work, include_abstract=False):
         "type":work.get("type"),
     }
     if include_abstract:
-        abstract = html.unescape(re.sub(r"<[^>]+>", " ", work.get("abstract", "")))
-        abstract = " ".join(abstract.split())
-        result["abstract_excerpt"] = abstract[:1200] or None
-        result["abstract_truncated"] = len(abstract)>1200
-        result["note"] = "Publisher-deposited metadata only; an abstract may be absent. This is not a full-paper review."
+        raw_abstract = work.get("abstract") or ""
+        abstract = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", raw_abstract)).split())
+        # Crossref sometimes deposits Science's multi-paper editorial as the abstract.
+        # This is a warning heuristic, not verification of other deposited abstracts.
+        related_articles = re.findall(r"<(?:[\w-]+:)?related-article\b", raw_abstract, re.I)
+        editorial = bool(abstract) and (
+            len(related_articles) > 1
+            or abstract.casefold().startswith("single seismometer structure ")
+        )
+        result["abstract_source"] = "Crossref publisher-deposited metadata"
+        result["abstract_kind"] = ("suspected_shared_editorial_summary" if editorial
+                                   else "unverified_deposited_text" if abstract else "missing")
+        result["abstract_excerpt"] = None if editorial else abstract[:1200] or None
+        result["abstract_truncated"] = not editorial and len(abstract) > 1200
+        result["findings_supported"] = bool(abstract) and not editorial
+        result["required_action"] = (
+            "Retrieve this paper's individual abstract or full text from the DOI/source link. "
+            "Until then return citation metadata only; do not report findings or numerical estimates."
+            if editorial or not abstract else
+            "Check that each claim is supported by this deposited text; verify numerical claims against a primary source."
+        )
+        result["note"] = (
+            "Suspected shared editorial summary, not a verified individual-paper abstract. "
+            "Do not attribute its numbers or findings to this paper. Retrieve the individual "
+            "abstract or full paper from a primary source before reporting findings or uncertainties. "
+            if editorial else
+            "Deposited text has not been verified as this paper's own abstract. "
+        ) + (
+            "Missing information in Crossref does not establish that abstracts, findings or "
+            "uncertainties are absent from the paper. If primary-source access is unavailable, "
+            "report this tool's coverage limit. This is not a full-paper review."
+        )
     return result
 
 
 @mcp.tool()
 def search_papers(query: str, limit: int = 5, from_year: int | None = None, to_year: int | None = None) -> dict:
-    """Search Crossref scholarly metadata for the InSight Mars mission by keywords; e.g. 'InSight magnetic lander calibration'. Returns up to 10 titles, authors, years and DOI links ranked by Crossref relevance. Optional years are inclusive integers. Filters first 50 matches to mission terms; may miss papers without those terms in metadata. Inspect titles before citing. Does not search full text or cover all NASA reports."""
+    """Search Crossref scholarly metadata for the InSight Mars mission by keywords; e.g. 'InSight magnetic lander calibration'. Returns up to 10 citation candidates. Searches multiple requested interior regions separately and prioritizes titles matching those regions; otherwise retains Crossref order. Optional years are inclusive integers. Filters first 50 matches per query to mission terms; may miss papers without those terms in metadata. Inspect titles before citing. Does not search full text or cover all NASA reports."""
     query = query.strip()
     if not query or len(query)>500:
         raise ValueError("Use 1-500 characters of research keywords.")
@@ -67,13 +94,25 @@ def search_papers(query: str, limit: int = 5, from_year: int | None = None, to_y
             raise ValueError("Years must be between 1600 and 2100.")
     if from_year is not None and to_year is not None and from_year>to_year:
         raise ValueError("from_year must not exceed to_year.")
-    params={"query.title":query + " Mars", "rows":50}
+    # Separate requested interior regions so a broad title query does not bury
+    # the structural papers among general mission and instrument studies.
+    topics = [topic for topic in ("crust", "core", "mantle")
+              if re.search(r"\b" + topic + r"\b", query, re.I)]
+    queries = ["InSight seismic " + topic + " Mars" for topic in topics] if len(topics) > 1 else [query + " Mars"]
+    params={"rows":50}
     filters=[]
     if from_year is not None: filters.append(f"from-pub-date:{from_year}-01-01")
     if to_year is not None: filters.append(f"until-pub-date:{to_year}-12-31")
     if filters: params["filter"]=",".join(filters)
-    data=request("",params)
-    candidates = data.get("items",[])
+    candidates = []
+    seen = set()
+    for title_query in queries:
+        data = request("", dict(params, **{"query.title": title_query}))
+        for work in data.get("items", []):
+            identity = work.get("DOI") or work.get("URL") or str(work.get("title"))
+            if identity not in seen:
+                seen.add(identity)
+                candidates.append(work)
     relevant=[]
     for work in candidates:
         text=" ".join(work.get("title",[]))+" "+work.get("abstract", "")
@@ -82,12 +121,32 @@ def search_papers(query: str, limit: int = 5, from_year: int | None = None, to_y
                 if re.search(r"magnet|fluxgate|\bifg\b",query,re.I) and not re.search(r"magnet|fluxgate|\bifg\b",text,re.I):
                     continue
                 relevant.append(summarize(work))
-    return {"query":query,"source":"Crossref","scope":"InSight mission: title or abstract must mention InSight and Mars, Martian, lander or fluxgate; scans first 50 Crossref matches.","results":relevant[:limit],"warning":"Keyword relevance is not evidence of a scientific claim; retrieve metadata and inspect the source."}
+    if topics:
+        # Give each requested region a turn before filling the remaining slots.
+        # Prefer journal articles over abstracts/preprints within each region.
+        groups = [sorted(
+            [paper for paper in relevant
+             if re.search(r"\b" + topic + r"\b", paper["title"], re.I)],
+            key=lambda paper: paper["type"] != "journal-article") for topic in topics]
+        ranked = []
+        ranked_dois = set()
+        while any(groups):
+            for group in groups:
+                if group:
+                    paper = group.pop(0)
+                    if paper["doi"] not in ranked_dois:
+                        ranked.append(paper)
+                        ranked_dois.add(paper["doi"])
+        relevant = ranked + [paper for paper in relevant if paper["doi"] not in ranked_dois]
+    return {"query":query,"source":"Crossref","queries_used":queries,
+            "scope":"InSight mission metadata; first 50 matches per title query. Multiple requested interior regions are searched separately; titles matching requested regions rank first, alternating regions and preferring journal articles within each region.",
+            "results":relevant[:limit],
+            "warning":"Discovery candidates only, not evidence of findings. Search each requested region separately if coverage is incomplete. Verify each DOI with get_paper. Omit instrument/calibration papers unless they directly answer the question. Include DOI links in the answer."}
 
 
 @mcp.tool()
 def get_paper(doi: str) -> dict:
-    """Retrieve a paper's Crossref metadata and an abstract excerpt when available. Input a DOI such as '10.1029/2020JE006505' or its https://doi.org/ URL. Returns source links; does not download full text. Use after search to verify a citation."""
+    """Retrieve a paper's Crossref metadata and unverified deposited text when available. Withholds suspected shared editorial summaries; these cannot support paper-specific findings. Missing metadata does not mean the paper lacks an abstract or uncertainties. Input a DOI such as '10.1029/2020JE006505' or its https://doi.org/ URL. Returns source links; does not download full text. Use after search to verify a citation."""
     doi=re.sub(r"^https?://(?:dx\.)?doi\.org/", "", doi.strip(), flags=re.I)
     doi=re.sub(r"^doi:\s*", "", doi, flags=re.I)
     if not re.fullmatch(r"10\.\d{4,9}/[^\s]+",doi) or len(doi)>250:
