@@ -21,6 +21,13 @@ class Plugins:
     def __enter__(self):
         self.thread.start()
         self.ready.result(timeout=120)
+        from subagents import Subagents
+        try:
+            self.subagents = Subagents(self)
+        except Exception:
+            self.loop.call_soon_threadsafe(self.stop.set)
+            self.thread.join(timeout=20)
+            raise
         return self
 
     def _thread(self):
@@ -103,5 +110,7 @@ class Plugins:
         return asyncio.run_coroutine_threadsafe(self._call(name,arguments),self.loop).result(timeout=90)
 
     def __exit__(self, *args):
+        if hasattr(self, "subagents"):
+            self.subagents.close()
         self.loop.call_soon_threadsafe(self.stop.set)
         self.thread.join(timeout=20)

@@ -27,9 +27,12 @@ PLUGINS = None
 
 def emit(kind, **data):
     with LOCK:
-        EVENTS.append({"kind": kind, **data})
+        event = {"kind": kind, **data}
+        if PLUGINS:
+            PLUGINS.subagents.audit({"event": "web_event", "data": event})
+        EVENTS.append(event)
 
-def web_tool(command, execute=None):
+def request_approval(command):
     global PENDING
     approval = {"id": secrets.token_hex(8), "command": command,
                 "ready": threading.Event(), "approved": False}
@@ -40,6 +43,18 @@ def web_tool(command, execute=None):
     answered = approval["ready"].wait(600)
     with LOCK:
         PENDING = None
+    return approval, answered
+
+
+def web_approve_shell(label):
+    approval, answered = request_approval(label)
+    approved = bool(answered and approval["approved"])
+    emit("result", id=approval["id"], output="Approved." if approved else "Declined or expired.", exit_code=None)
+    return approved
+
+
+def web_tool(command, execute=None):
+    approval, answered = request_approval(command)
     if answered and approval["approved"]:
         try:
             result = execute() if execute else run_command(command)
@@ -54,10 +69,14 @@ def web_tool(command, execute=None):
 def run_turn(text):
     global BUSY
     try:
+        if text.strip() == "/agents" and PLUGINS:
+            emit("assistant", text=json.dumps(PLUGINS.subagents.call("subagent", {"action": "list"}), indent=2))
+            return
         MESSAGES.append({"role": "user", "content": text})
         agent_turn(MESSAGES, run_tool=web_tool,
                    on_text=lambda reply: emit("assistant", text=reply),
                    on_usage=lambda counts: emit("usage", **counts), plugins=PLUGINS,
+                   approve_shell=web_approve_shell,
                    approve_mcp=lambda name, arguments: web_tool(name + "\n" + json.dumps(arguments), execute=lambda:{"approved":True,"output":"Approved MCP call.","exit_code":0}).get("approved",False))
     except Exception as error:
         # Avoid dumping request bodies, headers, or credentials into the browser.
@@ -181,9 +200,13 @@ class Handler(BaseHTTPRequestHandler):
                     emit("decision", id=PENDING["id"], approved=data["approved"])
                     self.respond(200, {"ok": True})
             elif self.path == "/reset":
-                if BUSY:
+                if BUSY or PENDING:
                     self.respond(409, {"error": "Finish or deny the current command first."})
                 else:
+                    if PLUGINS:
+                        from subagents import Subagents
+                        PLUGINS.subagents.close()
+                        PLUGINS.subagents = Subagents(PLUGINS)
                     MESSAGES[:] = initial_messages()
                     if PLUGINS: MESSAGES[0]["content"] += PLUGINS.skill_prompt()
                     emit("reset")

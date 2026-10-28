@@ -28,7 +28,8 @@ def verify_loop(plugins):
 
 with Plugins() as plugins:
     plugins.announce()
-    assert len(plugins.tools)==5 and len(plugins.skills)==2
+    assert {"email__check_inbox", "email__read_message", "email__send_message"} <= set(plugins.routes)
+    assert len(plugins.skills) >= 3
     verify_loop(plugins)
     paper=plugins.call("insight_literature__get_paper",{"doi":"10.1029/2020JE006505"})
     assert "Magnetic Variability" in paper["title"]

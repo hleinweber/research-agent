@@ -48,20 +48,29 @@ def run(plugins):
     send("Research agent ready. Ask a question. Commands require approval by replying to their prompt. /new resets the conversation.")
     try:
         while True:
-            if not pending: pending.extend(poll())
+            # A background approval owns polling until its matching reply arrives.
+            with plugins.subagents.approval_lock:
+                if not pending: pending.extend(poll())
             if not pending: continue
             message=pending.popleft()
             # Replies to old prompts cannot become fresh orders.
             if message.get("reply_to_message_id"): continue
             text=message["text"].strip()
             if text=="/new":
+                from subagents import Subagents
+                plugins.subagents.close()
+                plugins.subagents=Subagents(plugins)
                 messages=fresh()
                 send("Started a new conversation.")
+                continue
+            if text=="/agents":
+                send(json.dumps(plugins.subagents.call("subagent", {"action":"list"}),indent=2))
                 continue
             messages.append({"role":"user","content":text})
             try:
                 agent_turn(messages,run_tool=shell,on_text=send,plugins=plugins,
-                           approve_mcp=lambda name,args:approve(name+"\n"+json.dumps(args)),telegram_mode=True)
+                           approve_mcp=lambda name,args:approve(name+"\n"+json.dumps(args)),telegram_mode=True,
+                           approve_shell=approve)
             except Exception as error:
                 send("Request failed ("+type(error).__name__+"). Retry or use /new.")
     except KeyboardInterrupt:
